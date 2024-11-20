@@ -21,12 +21,12 @@ api.interceptors.request.use((config) => {
 // Auth API
 export const authAPI = {
   register: async (data: { email: string; password: string; name: string }) => {
-    const response = await api.post('/api/auth/register', data);
+    const response = await api.post('/auth/register', data);
     return response.data;
   },
 
   login: async (data: { email: string; password: string }) => {
-    const response = await api.post('/api/auth/login', data);
+    const response = await api.post('/auth/login', data);
     return response.data;
   },
 };
@@ -60,7 +60,7 @@ export interface TransactionFilters {
 
 export const transactionsAPI = {
   create: async (data: TransactionFormData) => {
-    const response = await api.post('/api/transactions', {
+    const response = await api.post('/transactions', {
       ...data,
       date: new Date(data.date)
     });
@@ -68,12 +68,12 @@ export const transactionsAPI = {
   },
 
   getAll: async (params?: TransactionFilters) => {
-    const response = await api.get('/api/transactions', { params });
+    const response = await api.get('/transactions', { params });
     return response.data;
   },
 
   update: async (id: string, data: Partial<TransactionFormData>) => {
-    const response = await api.patch(`/api/transactions/${id}`, {
+    const response = await api.patch(`/transactions/${id}`, {
       ...data,
       ...(data.date && { date: new Date(data.date) })
     });
@@ -81,12 +81,12 @@ export const transactionsAPI = {
   },
 
   delete: async (id: string) => {
-    const response = await api.delete(`/api/transactions/${id}`);
+    const response = await api.delete(`/transactions/${id}`);
     return response.data;
   },
 
   getStats: async (params?: { startDate?: string; endDate?: string }) => {
-    const response = await api.get('/api/transactions/stats', { params });
+    const response = await api.get('/transactions/stats', { params });
     return response.data;
   },
 };
@@ -112,7 +112,7 @@ export interface InvestmentFilters {
 export const investmentsAPI = {
   create: async (data: Omit<Investment, '_id' | 'user'>) => {
     // Create investment
-    const response = await api.post('/api/investments', data);
+    const response = await api.post('/investments', data);
     
     // Create corresponding expense transaction
     await transactionsAPI.create({
@@ -127,22 +127,22 @@ export const investmentsAPI = {
   },
 
   getAll: async (params?: InvestmentFilters) => {
-    const response = await api.get('/api/investments', { params });
+    const response = await api.get('/investments', { params });
     return Array.isArray(response.data) ? response.data : [];
   },
 
   update: async (id: string, data: Partial<Omit<Investment, '_id' | 'user'>>) => {
-    const response = await api.patch(`/api/investments/${id}`, data);
+    const response = await api.patch(`/investments/${id}`, data);
     return response.data;
   },
 
   delete: async (id: string) => {
-    const response = await api.delete(`/api/investments/${id}`);
+    const response = await api.delete(`/investments/${id}`);
     return response.data;
   },
 
   getStats: async (params?: { startDate?: string; endDate?: string }) => {
-    const response = await api.get('/api/investments/stats', { params });
+    const response = await api.get('/investments/stats', { params });
     return response.data;
   },
 };
@@ -165,7 +165,7 @@ export interface DashboardStats {
 
 export const dashboardAPI = {
   getStats: async (params?: { startDate?: string; endDate?: string }) => {
-    const response = await api.get('/api/dashboard/stats', { params });
+    const response = await api.get('/dashboard/stats', { params });
     return response.data;
   },
 };
