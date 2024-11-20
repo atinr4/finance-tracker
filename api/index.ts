@@ -4,9 +4,9 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import morgan from 'morgan';
-import { authRouter } from '../packages/backend/src/routes/auth';
-import { transactionRouter } from '../packages/backend/src/routes/transactions';
-import { investmentRouter } from '../packages/backend/src/routes/investments';
+import { authRouter } from './routes/auth';
+import { transactionRouter } from './routes/transactions';
+import { investmentRouter } from './routes/investments';
 
 dotenv.config();
 
