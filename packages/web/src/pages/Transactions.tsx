@@ -21,8 +21,15 @@ import {
   CircularProgress,
   Alert,
   Grid,
+  InputAdornment,
 } from '@mui/material';
-import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { 
+  Add as AddIcon, 
+  Edit as EditIcon, 
+  Delete as DeleteIcon,
+  Search as SearchIcon,
+  FileDownload as FileDownloadIcon,
+} from '@mui/icons-material';
 import { transactionsAPI, Transaction, TransactionFilters, TransactionFormData } from '../services/api';
 import { formatCurrency } from '../utils/formatters';
 import { useAuth } from '../contexts/AuthContext';
@@ -49,12 +56,24 @@ const Transactions: React.FC = () => {
   const [formData, setFormData] = useState<TransactionFormData>(initialFormData);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filters, setFilters] = useState<TransactionFilters>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     if (isAuthenticated) {
       fetchTransactions();
     }
   }, [isAuthenticated, filters]);
+
+  useEffect(() => {
+    // Filter transactions based on search query
+    const filtered = transactions.filter(transaction => 
+      transaction.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      transaction.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      transaction.amount.toString().includes(searchQuery)
+    );
+    setFilteredTransactions(filtered);
+  }, [searchQuery, transactions]);
 
   const fetchTransactions = async () => {
     try {
@@ -112,6 +131,31 @@ const Transactions: React.FC = () => {
     }
   };
 
+  const handleExport = () => {
+    // Create CSV content
+    const headers = ['Date', 'Type', 'Category', 'Description', 'Amount'];
+    const csvContent = [
+      headers.join(','),
+      ...filteredTransactions.map(t => [
+        new Date(t.date).toLocaleDateString(),
+        t.type,
+        t.category,
+        `"${t.description}"`, // Wrap description in quotes to handle commas
+        t.amount
+      ].join(','))
+    ].join('\n');
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `transactions_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   if (!isAuthenticated) {
     return (
       <Container>
@@ -132,15 +176,38 @@ const Transactions: React.FC = () => {
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h4" component="h1">
+      <Paper sx={{ p: 3 }}>
+        <Grid container spacing={2} alignItems="center" sx={{ mb: 3 }}>
+          <Grid item xs>
+            <Typography variant="h5" component="h2">
               Transactions
             </Typography>
+          </Grid>
+          <Grid item>
+            <TextField
+              size="small"
+              placeholder="Search transactions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ mr: 2 }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<FileDownloadIcon />}
+              onClick={handleExport}
+              sx={{ mr: 2 }}
+            >
+              Export
+            </Button>
             <Button
               variant="contained"
-              color="primary"
               startIcon={<AddIcon />}
               onClick={() => {
                 setFormData(initialFormData);
@@ -150,73 +217,85 @@ const Transactions: React.FC = () => {
             >
               Add Transaction
             </Button>
-          </Box>
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-
-          <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-            <TableContainer>
-              <Table stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Type</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell>Description</TableCell>
-                    <TableCell align="right">Amount</TableCell>
-                    <TableCell align="center">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {transactions.map((transaction) => (
-                    <TableRow key={transaction._id}>
-                      <TableCell>
-                        {new Date(transaction.date).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
-                        <Typography
-                          color={transaction.type === 'income' ? 'success.main' : 'error.main'}
-                        >
-                          {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>{transaction.category}</TableCell>
-                      <TableCell>{transaction.description}</TableCell>
-                      <TableCell align="right">
-                        <Typography
-                          color={transaction.type === 'income' ? 'success.main' : 'error.main'}
-                        >
-                          {formatCurrency(transaction.amount)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <IconButton
-                          color="primary"
-                          onClick={() => handleEdit(transaction)}
-                          size="small"
-                        >
-                          <EditIcon />
-                        </IconButton>
-                        <IconButton
-                          color="error"
-                          onClick={() => handleDelete(transaction._id)}
-                          size="small"
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
+          </Grid>
         </Grid>
-      </Grid>
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Date</TableCell>
+                <TableCell>Type</TableCell>
+                <TableCell>Category</TableCell>
+                <TableCell>Description</TableCell>
+                <TableCell align="right">Amount</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    <CircularProgress />
+                  </TableCell>
+                </TableRow>
+              ) : filteredTransactions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    No transactions found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredTransactions.map((transaction) => (
+                  <TableRow key={transaction._id}>
+                    <TableCell>
+                      {new Date(transaction.date).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Typography
+                        color={transaction.type === 'income' ? 'success.main' : 'error.main'}
+                      >
+                        {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{transaction.category}</TableCell>
+                    <TableCell>{transaction.description}</TableCell>
+                    <TableCell align="right">
+                      <Typography
+                        color={transaction.type === 'income' ? 'success.main' : 'error.main'}
+                      >
+                        {formatCurrency(transaction.amount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <IconButton
+                        color="primary"
+                        onClick={() => handleEdit(transaction)}
+                        size="small"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton
+                        color="error"
+                        onClick={() => handleDelete(transaction._id)}
+                        size="small"
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
         <form onSubmit={handleSubmit}>

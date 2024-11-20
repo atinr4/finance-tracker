@@ -14,108 +14,90 @@ import {
   Stack,
 } from '@mui/material';
 import { INVESTMENT_CATEGORIES } from '@finance-tracker/shared/dist/constants';
-
-interface Investment {
-  id: string;
-  name: string;
-  amount: number;
-  category: string;
-  date: string;
-  notes?: string;
-}
+import { Investment } from '../services/api';
 
 interface AddInvestmentDialogProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (investment: Investment) => void;
+  onSubmit: (investment: Omit<Investment, '_id' | 'user'>) => void;
 }
 
 const AddInvestmentDialog: React.FC<AddInvestmentDialogProps> = ({
   open,
   onClose,
-  onAdd,
+  onSubmit,
 }) => {
-  const [investment, setInvestment] = useState<Partial<Investment>>({
-    date: new Date().toISOString().split('T')[0],
+  const [investment, setInvestment] = useState<Partial<Omit<Investment, '_id' | 'user'>>>({
+    date: new Date(),
   });
+
+  const [dateString, setDateString] = useState(new Date().toISOString().split('T')[0]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>
   ) => {
     const { name, value } = e.target;
-    setInvestment((prev) => ({
-      ...prev,
-      [name as string]: value,
-    }));
-  };
-
-  const handleSelectChange = (e: SelectChangeEvent<string>) => {
-    const { name, value } = e.target;
-    setInvestment((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    if (name === 'date') {
+      setDateString(value as string);
+      setInvestment(prev => ({
+        ...prev,
+        date: new Date(value as string),
+      }));
+    } else {
+      setInvestment((prev) => ({
+        ...prev,
+        [name as string]: value,
+      }));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      investment.date &&
-      investment.name &&
-      investment.amount &&
-      investment.category
-    ) {
-      onAdd({
-        ...investment as Investment,
-        id: new Date().getTime().toString(),
+    if (investment.name && investment.amount && investment.category && investment.date) {
+      onSubmit({
+        name: investment.name,
         amount: Number(investment.amount),
+        category: investment.category,
+        date: investment.date,
+        notes: investment.notes,
       });
       setInvestment({
-        date: new Date().toISOString().split('T')[0],
+        date: new Date(),
       });
-      onClose();
+      setDateString(new Date().toISOString().split('T')[0]);
     }
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <form onSubmit={handleSubmit}>
-        <DialogTitle>Add Investment</DialogTitle>
+        <DialogTitle>Add New Investment</DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+          <Stack spacing={2} sx={{ mt: 2 }}>
             <TextField
-              label="Date"
-              type="date"
-              fullWidth
-              name="date"
-              value={investment.date || ''}
-              onChange={handleChange}
-              InputLabelProps={{
-                shrink: true,
-              }}
-            />
-            <TextField
-              label="Name"
-              type="text"
-              fullWidth
               name="name"
+              label="Investment Name"
+              fullWidth
+              required
               value={investment.name || ''}
               onChange={handleChange}
             />
             <TextField
+              name="amount"
               label="Amount"
               type="number"
               fullWidth
-              name="amount"
+              required
               value={investment.amount || ''}
               onChange={handleChange}
+              inputProps={{ min: 0, step: 0.01 }}
             />
-            <FormControl fullWidth>
+            <FormControl fullWidth required>
               <InputLabel>Category</InputLabel>
               <Select
                 name="category"
                 value={investment.category || ''}
-                onChange={handleSelectChange}
+                onChange={handleChange as (event: SelectChangeEvent<string>) => void}
                 label="Category"
               >
                 {INVESTMENT_CATEGORIES.map((category) => (
@@ -126,12 +108,21 @@ const AddInvestmentDialog: React.FC<AddInvestmentDialogProps> = ({
               </Select>
             </FormControl>
             <TextField
+              name="date"
+              label="Date"
+              type="date"
+              fullWidth
+              required
+              value={dateString}
+              onChange={handleChange}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              name="notes"
               label="Notes"
-              type="text"
               fullWidth
               multiline
-              rows={4}
-              name="notes"
+              rows={3}
               value={investment.notes || ''}
               onChange={handleChange}
             />
@@ -140,7 +131,7 @@ const AddInvestmentDialog: React.FC<AddInvestmentDialogProps> = ({
         <DialogActions>
           <Button onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="contained" color="primary">
-            Add
+            Add Investment
           </Button>
         </DialogActions>
       </form>

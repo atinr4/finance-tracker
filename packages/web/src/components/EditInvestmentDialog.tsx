@@ -1,115 +1,107 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  Button,
   TextField,
-  Stack,
-  MenuItem,
+  Button,
   Select,
+  MenuItem,
   FormControl,
   InputLabel,
   SelectChangeEvent,
+  Stack,
 } from '@mui/material';
 import { INVESTMENT_CATEGORIES } from '@finance-tracker/shared/dist/constants';
-
-interface Investment {
-  id: string;
-  name: string;
-  amount: number;
-  category: string;
-  date: string;
-  notes?: string;
-}
+import { Investment } from '../services/api';
 
 interface EditInvestmentDialogProps {
-  isOpen: boolean;
-  handleClose: () => void;
+  open: boolean;
+  onClose: () => void;
   investment: Investment | null;
-  handleSave: (updatedInvestment: Investment) => void;
+  onSubmit: (investment: Partial<Investment>) => void;
 }
 
 const EditInvestmentDialog: React.FC<EditInvestmentDialogProps> = ({
-  isOpen,
-  handleClose,
+  open,
+  onClose,
   investment,
-  handleSave,
+  onSubmit,
 }) => {
-  const [formData, setFormData] = useState<Investment>({
-    id: '',
-    name: '',
-    amount: 0,
-    category: '',
-    date: '',
-    notes: '',
-  });
+  const [formData, setFormData] = useState<Partial<Investment>>({});
+  const [dateString, setDateString] = useState('');
 
   useEffect(() => {
     if (investment) {
-      setFormData(investment);
+      setFormData({
+        ...investment,
+        date: new Date(investment.date),
+      });
+      setDateString(new Date(investment.date).toISOString().split('T')[0]);
     }
   }, [investment]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>
+  ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
-
-  const handleCategoryChange = (e: SelectChangeEvent<string>) => {
-    setFormData((prev) => ({
-      ...prev,
-      category: e.target.value,
-    }));
+    if (name === 'date') {
+      setDateString(value as string);
+      setFormData(prev => ({
+        ...prev,
+        date: new Date(value as string),
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name as string]: value,
+      }));
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSave({
-      ...formData,
-      amount: Number(formData.amount),
-    });
-    handleClose();
+    if (formData.name && formData.amount && formData.category && formData.date) {
+      onSubmit({
+        ...formData,
+        amount: Number(formData.amount),
+        date: formData.date,
+      });
+    }
   };
 
   return (
-    <Dialog open={isOpen} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <form onSubmit={handleSubmit}>
         <DialogTitle>Edit Investment</DialogTitle>
         <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+          <Stack spacing={2} sx={{ mt: 2 }}>
             <TextField
-              label="Investment Name"
               name="name"
-              value={formData.name}
-              onChange={handleInputChange}
+              label="Investment Name"
               fullWidth
               required
+              value={formData.name || ''}
+              onChange={handleChange}
             />
-
             <TextField
-              label="Amount"
               name="amount"
+              label="Amount"
               type="number"
-              value={formData.amount}
-              onChange={handleInputChange}
               fullWidth
               required
-              inputProps={{ min: 0, step: "0.01" }}
+              value={formData.amount || ''}
+              onChange={handleChange}
+              inputProps={{ min: 0, step: 0.01 }}
             />
-
-            <FormControl fullWidth>
+            <FormControl fullWidth required>
               <InputLabel>Category</InputLabel>
               <Select
-                value={formData.category}
-                label="Category"
-                onChange={handleCategoryChange}
                 name="category"
-                required
+                value={formData.category || ''}
+                onChange={handleChange as (event: SelectChangeEvent<string>) => void}
+                label="Category"
               >
                 {INVESTMENT_CATEGORIES.map((category) => (
                   <MenuItem key={category.id} value={category.id}>
@@ -118,32 +110,32 @@ const EditInvestmentDialog: React.FC<EditInvestmentDialogProps> = ({
                 ))}
               </Select>
             </FormControl>
-
             <TextField
-              label="Date"
               name="date"
+              label="Date"
               type="date"
-              value={formData.date}
-              onChange={handleInputChange}
               fullWidth
               required
+              value={dateString}
+              onChange={handleChange}
               InputLabelProps={{ shrink: true }}
             />
-
             <TextField
-              label="Notes"
               name="notes"
-              value={formData.notes}
-              onChange={handleInputChange}
+              label="Notes"
               fullWidth
               multiline
               rows={3}
+              value={formData.notes || ''}
+              onChange={handleChange}
             />
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleClose}>Cancel</Button>
-          <Button type="submit" variant="contained">Save</Button>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained" color="primary">
+            Save Changes
+          </Button>
         </DialogActions>
       </form>
     </Dialog>

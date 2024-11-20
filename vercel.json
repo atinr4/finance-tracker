@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "buildCommand": "npm install && npm run build",
+  "outputDirectory": "packages/web/build",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "builds": [
+    {
+      "src": "packages/web/package.json",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "packages/backend/api/**/*.ts",
+      "use": "@vercel/node"
+    }
+  ]
+}

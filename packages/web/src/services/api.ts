@@ -111,13 +111,24 @@ export interface InvestmentFilters {
 
 export const investmentsAPI = {
   create: async (data: Omit<Investment, '_id' | 'user'>) => {
+    // Create investment
     const response = await api.post('/api/investments', data);
+    
+    // Create corresponding expense transaction
+    await transactionsAPI.create({
+      type: 'expense',
+      amount: data.amount,
+      category: 'investments',
+      description: `Investment: ${data.name}`,
+      date: new Date(data.date).toISOString().split('T')[0]
+    });
+
     return response.data;
   },
 
   getAll: async (params?: InvestmentFilters) => {
     const response = await api.get('/api/investments', { params });
-    return response.data;
+    return Array.isArray(response.data) ? response.data : [];
   },
 
   update: async (id: string, data: Partial<Omit<Investment, '_id' | 'user'>>) => {
