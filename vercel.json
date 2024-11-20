@@ -32,6 +32,8 @@
     }
   ],
   "env": {
-    "NODE_VERSION": "18.x"
+    "NODE_VERSION": "18.x",
+    "MONGODB_URI": "@mongodb_uri",
+    "JWT_SECRET": "@jwt_secret"
   }
 }
