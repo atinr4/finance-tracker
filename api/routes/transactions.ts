@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { TransactionModel } from '../models/transaction';
 import { auth } from '../middleware/auth';
 
-export const transactionRouter = Router();
+const transactionRouter = Router();
 
 // Get all transactions
 transactionRouter.get('/', auth, async (req, res) => {
@@ -74,3 +74,5 @@ transactionRouter.delete('/:id', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+export default transactionRouter;

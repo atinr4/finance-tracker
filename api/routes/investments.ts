@@ -3,10 +3,10 @@ import { body, validationResult } from 'express-validator';
 import { InvestmentModel } from '../models/investment';
 import { auth } from '../middleware/auth';
 
-export const investmentRouter = Router();
+const router = Router();
 
 // Get all investments
-investmentRouter.get('/', auth, async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const investments = await InvestmentModel.find({ user: req.user.id }).sort({
       date: -1,
@@ -19,7 +19,7 @@ investmentRouter.get('/', auth, async (req, res) => {
 });
 
 // Add investment
-investmentRouter.post(
+router.post(
   '/',
   [
     auth,
@@ -55,7 +55,7 @@ investmentRouter.post(
 );
 
 // Update investment
-investmentRouter.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
   try {
     const investment = await InvestmentModel.findById(req.params.id);
     if (!investment) {
@@ -81,7 +81,7 @@ investmentRouter.put('/:id', auth, async (req, res) => {
 });
 
 // Delete investment
-investmentRouter.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
     const investment = await InvestmentModel.findById(req.params.id);
     if (!investment) {
@@ -99,3 +99,5 @@ investmentRouter.delete('/:id', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+export default router;

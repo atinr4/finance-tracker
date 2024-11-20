@@ -4,10 +4,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { UserModel } from '../models/user';
 
-export const authRouter = Router();
+const router = Router();
 
 // Register
-authRouter.post(
+router.post(
   '/register',
   [
     body('email').isEmail(),
@@ -62,7 +62,7 @@ authRouter.post(
 );
 
 // Login
-authRouter.post(
+router.post(
   '/login',
   [body('email').isEmail(), body('password').exists()],
   async (req, res) => {
@@ -105,3 +105,5 @@ authRouter.post(
     }
   }
 );
+
+export default router;
