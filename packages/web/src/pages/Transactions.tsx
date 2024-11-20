@@ -1,614 +1,324 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Container,
+  Paper,
   Typography,
-  Button,
-  Box,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
-  IconButton,
-  Stack,
-  Chip,
-  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,
-  Card,
-  CardContent,
-  Grid,
-  useTheme,
-  alpha,
-  Divider,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   TextField,
-  InputAdornment,
-  Tooltip,
-  Fade,
-  TablePagination,
-  Skeleton,
-  useMediaQuery,
+  MenuItem,
+  IconButton,
+  Box,
+  CircularProgress,
+  Alert,
+  Grid,
 } from '@mui/material';
-import { 
-  Add as AddIcon, 
-  Edit as EditIcon, 
-  Download as DownloadIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  AccountBalance as AccountBalanceIcon,
-  Search as SearchIcon,
-  FilterList as FilterListIcon,
-  Sort as SortIcon,
-  KeyboardArrowUp as KeyboardArrowUpIcon,
-  KeyboardArrowDown as KeyboardArrowDownIcon,
-} from '@mui/icons-material';
-import type {
-  ExpenseCategory,
-  IncomeCategory,
-  InvestmentCategory,
-} from '@finance-tracker/shared';
-import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  INVESTMENT_CATEGORIES,
-} from '@finance-tracker/shared';
-import AddTransactionDialog from '../components/AddTransactionDialog';
-import EditTransactionDialog from '../components/EditTransactionDialog';
-import { formatCurrency } from '../utils/formatCurrency';
+import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { transactionsAPI, Transaction, TransactionFilters, TransactionFormData } from '../services/api';
+import { formatCurrency } from '../utils/formatters';
+import { useAuth } from '../contexts/AuthContext';
 
-interface Transaction {
-  id: string;
-  date: string;
-  description: string;
-  amount: number;
-  category: string;
-  type: 'income' | 'expense' | 'investment';
-}
+const CATEGORIES = {
+  income: ['Salary', 'Investment', 'Freelance', 'Other'],
+  expense: ['Food', 'Transportation', 'Housing', 'Entertainment', 'Healthcare', 'Other'],
+};
 
-interface MonthYear {
-  month: number;
-  year: number;
-  label: string;
-}
+const initialFormData: TransactionFormData = {
+  type: 'expense',
+  amount: 0,
+  category: '',
+  description: '',
+  date: new Date().toISOString().split('T')[0],
+};
 
 const Transactions: React.FC = () => {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { isAuthenticated } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [openAddDialog, setOpenAddDialog] = useState(false);
-  const [openEditDialog, setOpenEditDialog] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  const [exportAnchorEl, setExportAnchorEl] = useState<null | HTMLElement>(null);
-  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
-  const [availableMonths, setAvailableMonths] = useState<MonthYear[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState<MonthYear | null>(null);
-  const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [sortConfig, setSortConfig] = useState<{
-    key: keyof Transaction;
-    direction: 'asc' | 'desc';
-  }>({ key: 'date', direction: 'desc' });
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [formData, setFormData] = useState<TransactionFormData>(initialFormData);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<TransactionFilters>({});
 
   useEffect(() => {
-    const loadData = () => {
-      try {
-        const storedTransactions = localStorage.getItem('transactions');
-        const parsedTransactions = storedTransactions ? JSON.parse(storedTransactions) : [];
-        setTransactions(parsedTransactions);
-        updateAvailableMonths(parsedTransactions);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error loading transactions:', error);
-        setTransactions([]);
-        updateAvailableMonths([]);
-        setIsLoading(false);
+    if (isAuthenticated) {
+      fetchTransactions();
+    }
+  }, [isAuthenticated, filters]);
+
+  const fetchTransactions = async () => {
+    try {
+      setLoading(true);
+      const data = await transactionsAPI.getAll(filters);
+      setTransactions(data);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load transactions');
+      console.error('Transaction fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingId) {
+        await transactionsAPI.update(editingId, formData);
+      } else {
+        await transactionsAPI.create(formData);
       }
-    };
-
-    loadData();
-
-    // Set up event listener for storage changes
-    window.addEventListener('storage', loadData);
-
-    return () => {
-      window.removeEventListener('storage', loadData);
-    };
-  }, []);
-
-  const updateAvailableMonths = (transactionList: Transaction[]) => {
-    const months = new Set<string>();
-    transactionList.forEach((transaction) => {
-      const date = new Date(transaction.date);
-      const monthYear = `${date.getFullYear()}-${date.getMonth()}`;
-      months.add(monthYear);
-    });
-
-    const sortedMonths = Array.from(months)
-      .map((monthYear) => {
-        const [year, month] = monthYear.split('-').map(Number);
-        return {
-          month,
-          year,
-          label: new Date(year, month).toLocaleDateString('en-US', {
-            month: 'long',
-            year: 'numeric',
-          }),
-        };
-      })
-      .sort((a, b) => {
-        const dateA = new Date(a.year, a.month);
-        const dateB = new Date(b.year, b.month);
-        return dateB.getTime() - dateA.getTime();
-      });
-
-    setAvailableMonths(sortedMonths);
-    if (sortedMonths.length > 0 && !selectedMonth) {
-      setSelectedMonth(sortedMonths[0]);
+      setOpenDialog(false);
+      setFormData(initialFormData);
+      setEditingId(null);
+      fetchTransactions();
+    } catch (err) {
+      setError('Failed to save transaction');
+      console.error('Transaction save error:', err);
     }
   };
 
-  const filteredTransactions = useMemo(() => {
-    return transactions
-      .filter((transaction) => {
-        const matchesSearch = searchQuery
-          ? transaction.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            transaction.category.toLowerCase().includes(searchQuery.toLowerCase())
-          : true;
-
-        const matchesMonth = selectedMonth
-          ? new Date(transaction.date).getMonth() === selectedMonth.month &&
-            new Date(transaction.date).getFullYear() === selectedMonth.year
-          : true;
-
-        const matchesType = selectedType
-          ? transaction.type === selectedType
-          : true;
-
-        return matchesSearch && matchesMonth && matchesType;
-      })
-      .sort((a, b) => {
-        const multiplier = sortConfig.direction === 'asc' ? 1 : -1;
-        if (sortConfig.key === 'date') {
-          return multiplier * (new Date(a.date).getTime() - new Date(b.date).getTime());
-        }
-        return multiplier * (a[sortConfig.key] > b[sortConfig.key] ? 1 : -1);
-      });
-  }, [transactions, searchQuery, selectedMonth, selectedType, sortConfig]);
-
-  const paginatedTransactions = useMemo(() => {
-    const startIndex = page * rowsPerPage;
-    return filteredTransactions.slice(startIndex, startIndex + rowsPerPage);
-  }, [filteredTransactions, page, rowsPerPage]);
-
-  const handleSort = (key: keyof Transaction) => {
-    setSortConfig((prev) => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
-  };
-
-  const handleAddTransaction = (transaction: Transaction) => {
-    const updatedTransactions = [...transactions, transaction];
-    setTransactions(updatedTransactions);
-    localStorage.setItem('transactions', JSON.stringify(updatedTransactions));
-    updateAvailableMonths(updatedTransactions);
-  };
-
-  const handleEditTransaction = (updatedTransaction: Transaction) => {
-    const updatedTransactions = transactions.map((t) =>
-      t.id === updatedTransaction.id ? updatedTransaction : t
-    );
-    setTransactions(updatedTransactions);
-    localStorage.setItem('transactions', JSON.stringify(updatedTransactions));
-    updateAvailableMonths(updatedTransactions);
-    setSelectedTransaction(null);
-    setOpenEditDialog(false);
-  };
-
-  const handleEditClick = (transaction: Transaction) => {
-    setSelectedTransaction(transaction);
-    setOpenEditDialog(true);
-  };
-
-  const handleExportClick = (event: React.MouseEvent<HTMLElement>) => {
-    setExportAnchorEl(event.currentTarget);
-  };
-
-  const handleExportClose = () => {
-    setExportAnchorEl(null);
-  };
-
-  const exportTransactionsForMonth = (monthYear: MonthYear) => {
-    // Filter transactions for the selected month
-    const monthTransactions = transactions.filter((transaction) => {
-      const date = new Date(transaction.date);
-      return (
-        date.getMonth() === monthYear.month && date.getFullYear() === monthYear.year
-      );
+  const handleEdit = (transaction: Transaction) => {
+    setFormData({
+      type: transaction.type,
+      amount: transaction.amount,
+      category: transaction.category,
+      description: transaction.description,
+      date: new Date(transaction.date).toISOString().split('T')[0],
     });
-
-    // Sort transactions by date
-    const sortedTransactions = [...monthTransactions].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-
-    // Prepare CSV content
-    const headers = ['Date', 'Type', 'Category', 'Description', 'Amount'];
-    const csvContent = [
-      headers.join(','),
-      ...sortedTransactions.map((t) => {
-        const category = getCategoryName(t.category, t.type);
-        const amount = formatCurrency(t.amount);
-        return [
-          t.date,
-          t.type,
-          category,
-          `"${t.description.replace(/"/g, '""')}"`, // Escape quotes in description
-          amount,
-        ].join(',');
-      }),
-    ].join('\n');
-
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `transactions_${monthYear.label.replace(' ', '_')}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    handleExportClose();
+    setEditingId(transaction._id);
+    setOpenDialog(true);
   };
 
-  const getCategoryName = (categoryId: string, type: 'income' | 'expense' | 'investment'): string => {
-    let categories: (ExpenseCategory | IncomeCategory | InvestmentCategory)[];
-    switch (type) {
-      case 'income':
-        categories = INCOME_CATEGORIES;
-        break;
-      case 'expense':
-        categories = EXPENSE_CATEGORIES;
-        break;
-      case 'investment':
-        categories = INVESTMENT_CATEGORIES;
-        break;
-      default:
-        return categoryId;
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this transaction?')) {
+      try {
+        await transactionsAPI.delete(id);
+        fetchTransactions();
+      } catch (err) {
+        setError('Failed to delete transaction');
+        console.error('Transaction delete error:', err);
+      }
     }
-    const category = categories.find((cat) => cat.id === categoryId);
-    return category ? category.name : categoryId;
   };
 
-  const SortableTableHeader: React.FC<{
-    label: string;
-    field: keyof Transaction;
-  }> = ({ label, field }) => (
-    <TableCell
-      onClick={() => handleSort(field)}
-      sx={{
-        cursor: 'pointer',
-        userSelect: 'none',
-        '&:hover': {
-          backgroundColor: alpha(theme.palette.primary.main, 0.04),
-        },
-      }}
-    >
-      <Box display="flex" alignItems="center">
-        <Typography variant="subtitle2" fontWeight="medium">
-          {label}
+  if (!isAuthenticated) {
+    return (
+      <Container>
+        <Typography variant="h5" align="center" sx={{ mt: 4 }}>
+          Please login to view your transactions
         </Typography>
-        {sortConfig.key === field && (
-          <Box component="span" ml={0.5}>
-            {sortConfig.direction === 'asc' ? (
-              <KeyboardArrowUpIcon fontSize="small" />
-            ) : (
-              <KeyboardArrowDownIcon fontSize="small" />
-            )}
-          </Box>
-        )}
+      </Container>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress />
       </Box>
-    </TableCell>
-  );
+    );
+  }
 
   return (
-    <Container maxWidth="xl">
-      <Box py={3}>
-        {/* Header Section */}
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4" component="h1" fontWeight="bold">
-            Transactions
-          </Typography>
-          <Stack direction="row" spacing={2}>
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+            <Typography variant="h4" component="h1">
+              Transactions
+            </Typography>
             <Button
               variant="contained"
+              color="primary"
               startIcon={<AddIcon />}
-              onClick={() => setOpenAddDialog(true)}
-              sx={{
-                borderRadius: 2,
-                textTransform: 'none',
-                px: 3,
+              onClick={() => {
+                setFormData(initialFormData);
+                setEditingId(null);
+                setOpenDialog(true);
               }}
             >
               Add Transaction
             </Button>
-          </Stack>
-        </Box>
+          </Box>
 
-        {/* Filters and Search */}
-        <Card
-          sx={{
-            mb: 3,
-            background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
-          }}
-        >
-          <CardContent>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  placeholder="Search transactions..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon color="action" />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ bgcolor: 'background.paper' }}
-                />
-              </Grid>
-              <Grid item xs={12} md={8}>
-                <Stack direction="row" spacing={1} justifyContent="flex-end">
-                  <Button
-                    variant="outlined"
-                    startIcon={<FilterListIcon />}
-                    onClick={(e) => setFilterAnchorEl(e.currentTarget)}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Filter
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<DownloadIcon />}
-                    onClick={(e) => setExportAnchorEl(e.currentTarget)}
-                    sx={{ textTransform: 'none' }}
-                  >
-                    Export
-                  </Button>
-                </Stack>
-              </Grid>
-            </Grid>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
+          )}
 
-            {/* Active Filters */}
-            {(selectedMonth || selectedType) && (
-              <Box mt={2}>
-                <Stack direction="row" spacing={1}>
-                  {selectedMonth && (
-                    <Chip
-                      label={selectedMonth.label}
-                      onDelete={() => setSelectedMonth(null)}
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                  {selectedType && (
-                    <Chip
-                      label={selectedType.charAt(0).toUpperCase() + selectedType.slice(1)}
-                      onDelete={() => setSelectedType(null)}
-                      color="primary"
-                      variant="outlined"
-                    />
-                  )}
-                </Stack>
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Transactions Table */}
-        <Card
-          sx={{
-            background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
-            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
-          }}
-        >
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <SortableTableHeader label="Date" field="date" />
-                  <SortableTableHeader label="Description" field="description" />
-                  <SortableTableHeader label="Category" field="category" />
-                  <SortableTableHeader label="Amount" field="amount" />
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {isLoading ? (
-                  Array.from(new Array(5)).map((_, index) => (
-                    <TableRow key={index}>
-                      <TableCell><Skeleton variant="text" /></TableCell>
-                      <TableCell><Skeleton variant="text" /></TableCell>
-                      <TableCell><Skeleton variant="text" /></TableCell>
-                      <TableCell><Skeleton variant="text" /></TableCell>
-                      <TableCell><Skeleton variant="text" /></TableCell>
-                    </TableRow>
-                  ))
-                ) : paginatedTransactions.length === 0 ? (
+          <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+            <TableContainer>
+              <Table stickyHeader>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={5} align="center">
-                      <Box py={3}>
-                        <Typography color="textSecondary">
-                          No transactions found
-                        </Typography>
-                      </Box>
-                    </TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell>Description</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell align="center">Actions</TableCell>
                   </TableRow>
-                ) : (
-                  paginatedTransactions.map((transaction) => (
-                    <TableRow
-                      key={transaction.id}
-                      sx={{
-                        transition: 'background-color 0.2s',
-                        '&:hover': {
-                          backgroundColor: alpha(theme.palette.primary.main, 0.04),
-                        },
-                      }}
-                    >
+                </TableHead>
+                <TableBody>
+                  {transactions.map((transaction) => (
+                    <TableRow key={transaction._id}>
                       <TableCell>
                         {new Date(transaction.date).toLocaleDateString()}
                       </TableCell>
-                      <TableCell>{transaction.description}</TableCell>
                       <TableCell>
-                        <Chip
-                          label={transaction.category}
-                          size="small"
-                          sx={{
-                            backgroundColor: alpha(
-                              transaction.type === 'income'
-                                ? theme.palette.success.main
-                                : transaction.type === 'expense'
-                                ? theme.palette.error.main
-                                : theme.palette.warning.main,
-                              0.1
-                            ),
-                            color:
-                              transaction.type === 'income'
-                                ? theme.palette.success.main
-                                : transaction.type === 'expense'
-                                ? theme.palette.error.main
-                                : theme.palette.warning.main,
-                          }}
-                        />
+                        <Typography
+                          color={transaction.type === 'income' ? 'success.main' : 'error.main'}
+                        >
+                          {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+                        </Typography>
                       </TableCell>
+                      <TableCell>{transaction.category}</TableCell>
+                      <TableCell>{transaction.description}</TableCell>
                       <TableCell align="right">
                         <Typography
-                          color={transaction.type === 'expense' ? 'error' : 'success.main'}
-                          fontWeight="medium"
+                          color={transaction.type === 'income' ? 'success.main' : 'error.main'}
                         >
                           {formatCurrency(transaction.amount)}
                         </Typography>
                       </TableCell>
-                      <TableCell align="right">
-                        <Tooltip title="Edit Transaction" arrow>
-                          <IconButton
-                            size="small"
-                            onClick={() => {
-                              setSelectedTransaction(transaction);
-                              setOpenEditDialog(true);
-                            }}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                      <TableCell align="center">
+                        <IconButton
+                          color="primary"
+                          onClick={() => handleEdit(transaction)}
+                          size="small"
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          color="error"
+                          onClick={() => handleDelete(transaction._id)}
+                          size="small"
+                        >
+                          <DeleteIcon />
+                        </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <TablePagination
-            component="div"
-            count={filteredTransactions.length}
-            page={page}
-            onPageChange={(_, newPage) => setPage(newPage)}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={(e) => {
-              setRowsPerPage(parseInt(e.target.value, 10));
-              setPage(0);
-            }}
-          />
-        </Card>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        </Grid>
+      </Grid>
 
-        {/* Filter Menu */}
-        <Menu
-          anchorEl={filterAnchorEl}
-          open={Boolean(filterAnchorEl)}
-          onClose={() => setFilterAnchorEl(null)}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        >
-          <MenuItem>
-            <ListItemText primary="Filter by Month" />
-          </MenuItem>
-          {availableMonths.map((month) => (
-            <MenuItem
-              key={`${month.year}-${month.month}`}
-              onClick={() => {
-                setSelectedMonth(month);
-                setFilterAnchorEl(null);
-              }}
-            >
-              {month.label}
-            </MenuItem>
-          ))}
-          <Divider />
-          <MenuItem>
-            <ListItemText primary="Filter by Type" />
-          </MenuItem>
-          {['income', 'expense', 'investment'].map((type) => (
-            <MenuItem
-              key={type}
-              onClick={() => {
-                setSelectedType(type);
-                setFilterAnchorEl(null);
-              }}
-            >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </MenuItem>
-          ))}
-        </Menu>
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+        <form onSubmit={handleSubmit}>
+          <DialogTitle>{editingId ? 'Edit Transaction' : 'Add Transaction'}</DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                select
+                fullWidth
+                label="Type"
+                value={formData.type}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    type: e.target.value as 'income' | 'expense',
+                    category: '',
+                  })
+                }
+                margin="normal"
+                required
+              >
+                <MenuItem value="income">Income</MenuItem>
+                <MenuItem value="expense">Expense</MenuItem>
+              </TextField>
 
-        {/* Export Menu */}
-        <Menu
-          anchorEl={exportAnchorEl}
-          open={Boolean(exportAnchorEl)}
-          onClose={() => setExportAnchorEl(null)}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        >
-          {availableMonths.map((month) => (
-            <MenuItem
-              key={`${month.year}-${month.month}`}
-              onClick={() => {
-                exportTransactionsForMonth(month);
-                setExportAnchorEl(null);
-              }}
-            >
-              <ListItemIcon>
-                <DownloadIcon fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary={`Export ${month.label}`} />
-            </MenuItem>
-          ))}
-        </Menu>
+              <TextField
+                select
+                fullWidth
+                label="Category"
+                value={formData.category}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    category: e.target.value,
+                  })
+                }
+                margin="normal"
+                required
+              >
+                {CATEGORIES[formData.type].map((category) => (
+                  <MenuItem key={category} value={category}>
+                    {category}
+                  </MenuItem>
+                ))}
+              </TextField>
 
-        {/* Dialogs */}
-        <AddTransactionDialog
-          open={openAddDialog}
-          onClose={() => setOpenAddDialog(false)}
-          onAdd={handleAddTransaction}
-        />
-        <EditTransactionDialog
-          open={openEditDialog}
-          onClose={() => {
-            setOpenEditDialog(false);
-            setSelectedTransaction(null);
-          }}
-          transaction={selectedTransaction}
-          onEdit={handleEditTransaction}
-        />
-      </Box>
+              <TextField
+                fullWidth
+                label="Amount"
+                type="number"
+                value={formData.amount}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    amount: parseFloat(e.target.value) || 0,
+                  })
+                }
+                margin="normal"
+                required
+              />
+
+              <TextField
+                fullWidth
+                label="Description"
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    description: e.target.value,
+                  })
+                }
+                margin="normal"
+                required
+              />
+
+              <TextField
+                fullWidth
+                label="Date"
+                type="date"
+                value={formData.date}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    date: e.target.value,
+                  })
+                }
+                margin="normal"
+                required
+                InputLabelProps={{
+                  shrink: true,
+                }}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" color="primary">
+              {editingId ? 'Update' : 'Add'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
     </Container>
   );
 };

@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "start": "npm run start --prefix packages/mobile",
-    "web": "npm run start --prefix packages/web",
+    "web": "DISABLE_REFRESH=true npm run start --prefix packages/web",
     "test": "jest",
     "lint": "eslint .",
     "build": "npm run build --workspaces",
@@ -28,6 +28,7 @@
     "prettier": "^2.8.7"
   },
   "resolutions": {
-    "ajv": "^8.12.0"
+    "ajv": "^8.12.0",
+    "react-refresh": "0.0.0-do-not-use"
   }
 }

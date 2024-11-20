@@ -1,34 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Box,
   Container,
   Grid,
   Paper,
   Typography,
+  CircularProgress,
   Card,
   CardContent,
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  Box,
-  useTheme,
-  useMediaQuery,
-  Skeleton,
+  Divider,
   IconButton,
+  Chip,
   Tooltip,
-  Fade,
   LinearProgress,
+  useMediaQuery,
 } from '@mui/material';
-import {
-  TrendingUp as TrendingUpIcon,
-  AccountBalance as AccountBalanceIcon,
-  ShowChart as ShowChartIcon,
-  ArrowUpward as ArrowUpwardIcon,
-  ArrowDownward as ArrowDownwardIcon,
-  MoreVert as MoreVertIcon,
-  Info as InfoIcon,
-} from '@mui/icons-material';
-import { COLORS } from '@finance-tracker/shared/dist/constants';
+import { useTheme, alpha } from '@mui/material/styles';
 import {
   BarChart,
   Bar,
@@ -36,476 +26,294 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
-  Legend,
   ResponsiveContainer,
-  AreaChart,
-  Area,
   PieChart,
   Pie,
   Cell,
+  Area,
+  AreaChart,
 } from 'recharts';
-import { formatCurrency, formatCurrencyCompact } from '../utils/formatCurrency';
-
-interface Transaction {
-  id: string;
-  date: string;
-  description: string;
-  amount: number;
-  category: string;
-  type: 'income' | 'expense' | 'investment';
-}
-
-interface Investment {
-  id: string;
-  name: string;
-  amount: number;
-  category: string;
-  date: string;
-  notes?: string;
-}
-
-interface DashboardCardProps {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-  color: string;
-  trend?: number;
-  loading?: boolean;
-}
-
-const DashboardCard: React.FC<DashboardCardProps> = ({
-  title,
-  value,
-  icon,
-  color,
-  trend,
-  loading = false,
-}) => {
-  return (
-    <Card
-      sx={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        p: 2.5,
-        background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 2,
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
-        transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: '0 8px 25px rgba(0, 0, 0, 0.08)',
-        },
-      }}
-    >
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-        <Typography variant="subtitle1" color="textSecondary" fontWeight="medium">
-          {title}
-        </Typography>
-        <Box
-          sx={{
-            p: 1,
-            borderRadius: 1,
-            backgroundColor: `${color}15`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {icon}
-        </Box>
-      </Box>
-      {loading ? (
-        <Skeleton variant="rectangular" width="100%" height={60} />
-      ) : (
-        <>
-          <Typography variant="h4" component="div" fontWeight="bold" sx={{ mb: 1 }}>
-            {formatCurrency(value)}
-          </Typography>
-          {trend !== undefined && (
-            <Box display="flex" alignItems="center">
-              {trend >= 0 ? (
-                <ArrowUpwardIcon sx={{ color: COLORS.success, fontSize: 16 }} />
-              ) : (
-                <ArrowDownwardIcon sx={{ color: COLORS.error, fontSize: 16 }} />
-              )}
-              <Typography
-                variant="body2"
-                color={trend >= 0 ? 'success.main' : 'error.main'}
-                sx={{ ml: 0.5 }}
-              >
-                {Math.abs(trend).toFixed(1)}%
-              </Typography>
-            </Box>
-          )}
-        </>
-      )}
-    </Card>
-  );
-};
+import {
+  TrendingUp,
+  TrendingDown,
+  AccountBalance,
+  DateRange,
+  Refresh,
+  ArrowUpward,
+  ArrowDownward,
+} from '@mui/icons-material';
+import { dashboardAPI, DashboardStats } from '../services/api';
+import { formatCurrency, formatCompactCurrency } from '../utils/formatters';
+import { useAuth } from '../contexts/AuthContext';
 
 const Dashboard: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isTablet = useMediaQuery(theme.breakpoints.down('md'));
-  const [isLoading, setIsLoading] = useState(true);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [investments, setInvestments] = useState<Investment[]>([]);
-  const [selectedTimeRange, setSelectedTimeRange] = useState<'1M' | '3M' | '6M' | '1Y'>('1M');
-  const [showTooltip, setShowTooltip] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const COLORS = [
+    theme.palette.primary.main,
+    theme.palette.secondary.main,
+    theme.palette.error.main,
+    theme.palette.warning.main,
+    theme.palette.info.main,
+  ];
+
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+  };
 
   useEffect(() => {
-    const loadData = () => {
+    const fetchDashboardData = async () => {
       try {
-        const storedTransactions = localStorage.getItem('transactions');
-        const storedInvestments = localStorage.getItem('investments');
-
-        setTransactions(storedTransactions ? JSON.parse(storedTransactions) : []);
-        setInvestments(storedInvestments ? JSON.parse(storedInvestments) : []);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        setTransactions([]);
-        setInvestments([]);
-        setIsLoading(false);
+        setLoading(true);
+        setError(null);
+        const data = await dashboardAPI.getStats();
+        setStats(data);
+      } catch (err) {
+        setError('Failed to load dashboard data');
+        console.error('Dashboard error:', err);
+      } finally {
+        setLoading(false);
       }
     };
 
-    loadData();
+    if (isAuthenticated) {
+      fetchDashboardData();
+    }
+  }, [isAuthenticated, refreshKey]);
 
-    // Set up event listener for storage changes
-    window.addEventListener('storage', loadData);
+  if (!isAuthenticated) {
+    return (
+      <Container maxWidth="lg">
+        <Box sx={{ textAlign: 'center', py: 8 }}>
+          <Typography variant="h4">Please login to view your dashboard</Typography>
+        </Box>
+      </Container>
+    );
+  }
 
-    return () => {
-      window.removeEventListener('storage', loadData);
-    };
-  }, []);
+  if (loading) {
+    return (
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        minHeight: '60vh',
+        flexDirection: 'column',
+        gap: 2
+      }}>
+        <CircularProgress size={48} />
+        <Typography variant="h6" color="textSecondary">
+          Loading your financial overview...
+        </Typography>
+      </Box>
+    );
+  }
 
-  const calculateMonthlyTotals = () => {
-    const currentDate = new Date();
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
+  if (error) {
+    return (
+      <Box sx={{ 
+        textAlign: 'center', 
+        py: 8,
+        backgroundColor: alpha(theme.palette.error.main, 0.1),
+        borderRadius: 2,
+        p: 3
+      }}>
+        <Typography color="error" variant="h6">{error}</Typography>
+      </Box>
+    );
+  }
 
-    const monthTransactions = transactions.filter(t => {
-      const date = new Date(t.date);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-    });
-
-    const income = monthTransactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const expenses = monthTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const savings = income - expenses;
-
-    return { income, expenses, savings };
-  };
-
-  const totals = calculateMonthlyTotals();
-  const totalInvestments = investments.reduce((sum, inv) => sum + inv.amount, 0);
-
-  const getChartData = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonth = new Date().getMonth();
-    
-    return months.slice(0, currentMonth + 1).map(month => {
-      const monthTransactions = transactions.filter(t => {
-        const date = new Date(t.date);
-        return months[date.getMonth()] === month;
-      });
-
-      const income = monthTransactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const expenses = monthTransactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      return {
-        name: month,
-        Income: income,
-        Expenses: expenses,
-        Savings: income - expenses,
-      };
-    });
-  };
-
-  const getCategoryDistribution = () => {
-    const categories = transactions.reduce<Record<string, number>>((acc, transaction) => {
-      if (!acc[transaction.category]) {
-        acc[transaction.category] = 0;
-      }
-      acc[transaction.category] += transaction.amount;
-      return acc;
-    }, {});
-
-    return Object.keys(categories).map(category => ({
-      name: category,
-      value: categories[category],
-    }));
-  };
-
-  const getRandomColor = (index: number) => {
-    const colors = [
-      COLORS.success,
-      COLORS.error,
-      COLORS.warning,
-      COLORS.info,
-      COLORS.primary,
-    ];
-    return colors[index % colors.length];
-  };
+  const totalBalance = (stats?.transactions?.income || 0) - (stats?.transactions?.expense || 0);
+  const investmentTotal = stats?.investments?.total || 0;
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4, px: { xs: 2, sm: 3 } }}>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+          Financial Dashboard
+        </Typography>
+        <Tooltip title="Refresh data">
+          <IconButton onClick={handleRefresh} color="primary">
+            <Refresh />
+          </IconButton>
+        </Tooltip>
+      </Box>
+
       <Grid container spacing={3}>
-        {/* Welcome Section */}
-        <Grid item xs={12}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h4" component="h1" fontWeight="bold">
-              Financial Dashboard
-            </Typography>
-            <Box>
-              {/* Time range selector */}
-              {['1M', '3M', '6M', '1Y'].map((range) => (
-                <Tooltip title={`Last ${range}`} key={range}>
-                  <IconButton
-                    size="small"
-                    onClick={() => setSelectedTimeRange(range as any)}
-                    sx={{
-                      ml: 1,
-                      backgroundColor: selectedTimeRange === range ? theme.palette.primary.main : 'transparent',
-                      color: selectedTimeRange === range ? 'white' : 'inherit',
-                      '&:hover': {
-                        backgroundColor: selectedTimeRange === range 
-                          ? theme.palette.primary.dark 
-                          : theme.palette.action.hover,
-                      },
-                    }}
-                  >
-                    {range}
-                  </IconButton>
-                </Tooltip>
-              ))}
-            </Box>
-          </Box>
+        {/* Summary Cards */}
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ height: '100%' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <AccountBalance sx={{ mr: 1, color: theme.palette.primary.main }} />
+                <Typography variant="h6">Total Balance</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ mb: 1 }}>
+                {formatCurrency(totalBalance)}
+              </Typography>
+              <LinearProgress 
+                variant="determinate" 
+                value={(totalBalance / (totalBalance + investmentTotal)) * 100}
+                sx={{ mb: 1, height: 8, borderRadius: 4 }}
+              />
+              <Typography variant="body2" color="textSecondary">
+                {totalBalance >= 0 ? 'Net Positive' : 'Net Negative'}
+              </Typography>
+            </CardContent>
+          </Card>
         </Grid>
 
-        {/* Financial Overview */}
-        <Grid item xs={12}>
-          <Paper
-            sx={{
-              p: 3,
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%',
-              overflow: 'visible',
-            }}
-            elevation={0}
-          >
-            <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-              Financial Overview
-            </Typography>
-            <Grid container spacing={3}>
-              {/* Summary Cards */}
-              <Grid item xs={12} sm={6} md={3}>
-                <DashboardCard
-                  title="Monthly Income"
-                  value={calculateMonthlyTotals().income}
-                  icon={<TrendingUpIcon sx={{ color: COLORS.success }} />}
-                  color={COLORS.success}
-                  trend={12}
-                  loading={isLoading}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <DashboardCard
-                  title="Monthly Expenses"
-                  value={calculateMonthlyTotals().expenses}
-                  icon={<TrendingUpIcon sx={{ color: COLORS.error }} />}
-                  color={COLORS.error}
-                  trend={-5}
-                  loading={isLoading}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <DashboardCard
-                  title="Monthly Savings"
-                  value={calculateMonthlyTotals().savings}
-                  icon={<AccountBalanceIcon sx={{ color: COLORS.info }} />}
-                  color={COLORS.info}
-                  trend={8}
-                  loading={isLoading}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <DashboardCard
-                  title="Investments"
-                  value={investments.reduce((sum, inv) => sum + inv.amount, 0)}
-                  icon={<ShowChartIcon sx={{ color: COLORS.warning }} />}
-                  color={COLORS.warning}
-                  trend={15}
-                  loading={isLoading}
-                />
-              </Grid>
+        <Grid item xs={12} md={4}>
+          <Card elevation={0}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <TrendingUp sx={{ mr: 1, color: theme.palette.success.main }} />
+                <Typography variant="h6">Income</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ mb: 1 }}>
+                {formatCurrency(stats?.transactions?.income || 0)}
+              </Typography>
+              <Chip 
+                icon={<ArrowUpward />} 
+                label="Monthly Income" 
+                color="success"
+                size="small"
+              />
+            </CardContent>
+          </Card>
+        </Grid>
 
-              {/* Charts Section */}
-              <Grid item xs={12} md={8}>
-                <Paper
-                  sx={{
-                    p: 3,
-                    height: '400px',
-                    background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
-                  }}
-                >
-                  <Typography variant="h6" gutterBottom fontWeight="medium">
-                    Financial Overview
-                  </Typography>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={getChartData()}
-                      margin={{ top: 20, right: 30, left: 0, bottom: 0 }}
+        <Grid item xs={12} md={4}>
+          <Card elevation={0}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <TrendingDown sx={{ mr: 1, color: theme.palette.error.main }} />
+                <Typography variant="h6">Expenses</Typography>
+              </Box>
+              <Typography variant="h4" sx={{ mb: 1 }}>
+                {formatCurrency(stats?.transactions?.expense || 0)}
+              </Typography>
+              <Chip 
+                icon={<ArrowDownward />} 
+                label="Monthly Expenses" 
+                color="error"
+                size="small"
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Charts */}
+        <Grid item xs={12} md={8}>
+          <Card elevation={0} sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>Income vs Expenses Trend</Typography>
+              <Box sx={{ height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={[
+                      { name: 'Income', value: stats?.transactions?.income || 0 },
+                      { name: 'Expenses', value: stats?.transactions?.expense || 0 }
+                    ]}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <RechartsTooltip />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke={theme.palette.primary.main}
+                      fill={alpha(theme.palette.primary.main, 0.2)}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>Investment Distribution</Typography>
+              <Box sx={{ height: 300, display: 'flex', justifyContent: 'center' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={stats?.investments?.byCategory || []}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="total"
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" stroke="#666" />
-                      <YAxis stroke="#666" />
-                      <RechartsTooltip 
-                        formatter={(value: number) => [formatCurrency(value), 'Amount']}
-                        labelFormatter={(label) => `${label}`}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="income"
-                        stackId="1"
-                        stroke={COLORS.success}
-                        fill={`${COLORS.success}30`}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="expenses"
-                        stackId="1"
-                        stroke={COLORS.error}
-                        fill={`${COLORS.error}30`}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="investments"
-                        stackId="1"
-                        stroke={COLORS.warning}
-                        fill={`${COLORS.warning}30`}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </Paper>
-              </Grid>
+                      {(stats?.investments?.byCategory || []).map((entry, index) => (
+                        <Cell key={entry.category} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Box>
+              <Box sx={{ mt: 2 }}>
+                {(stats?.investments?.byCategory || []).map((category, index) => (
+                  <Chip
+                    key={category.category}
+                    label={`${category.category}: ${formatCompactCurrency(category.total)}`}
+                    sx={{ m: 0.5 }}
+                    size="small"
+                    style={{ backgroundColor: alpha(COLORS[index % COLORS.length], 0.2) }}
+                  />
+                ))}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
 
-              {/* Recent Activity & Distribution */}
-              <Grid item xs={12} md={4}>
-                <Paper
-                  sx={{
-                    p: 3,
-                    height: '400px',
-                    background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <Typography variant="h6" gutterBottom fontWeight="medium">
-                    Expense Distribution
-                  </Typography>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={getCategoryDistribution()}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        paddingAngle={5}
-                        dataKey="value"
+        {/* Recent Transactions */}
+        <Grid item xs={12}>
+          <Card elevation={0}>
+            <CardContent>
+              <Typography variant="h6" sx={{ mb: 2 }}>Recent Transactions</Typography>
+              <List>
+                {stats?.transactions?.recent.map((transaction, index) => (
+                  <React.Fragment key={transaction._id}>
+                    <ListItem>
+                      <ListItemText
+                        primary={transaction.description}
+                        secondary={new Date(transaction.date).toLocaleDateString()}
+                      />
+                      <Typography
+                        variant="body1"
+                        color={transaction.type === 'income' ? 'success.main' : 'error.main'}
                       >
-                        {getCategoryDistribution().map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={getRandomColor(index)} />
-                        ))}
-                      </Pie>
-                      <RechartsTooltip 
-                        formatter={(value: number) => [formatCurrency(value), '']}
-                        labelFormatter={(label) => `${label}`}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </Paper>
-              </Grid>
-
-              {/* Recent Transactions */}
-              <Grid item xs={12}>
-                <Paper
-                  sx={{
-                    p: 3,
-                    background: 'linear-gradient(135deg, #ffffff, #f8f9fa)',
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.05)',
-                  }}
-                >
-                  <Typography variant="h6" gutterBottom fontWeight="medium">
-                    Recent Transactions
-                  </Typography>
-                  <List>
-                    {isLoading ? (
-                      Array.from(new Array(5)).map((_, index) => (
-                        <ListItem key={index} divider>
-                          <ListItemText
-                            primary={<Skeleton variant="text" width="60%" />}
-                            secondary={<Skeleton variant="text" width="40%" />}
-                          />
-                          <ListItemSecondaryAction>
-                            <Skeleton variant="text" width={100} />
-                          </ListItemSecondaryAction>
-                        </ListItem>
-                      ))
-                    ) : (
-                      transactions
-                        .slice(0, 5)
-                        .map((transaction) => (
-                          <ListItem
-                            key={transaction.id}
-                            divider
-                            sx={{
-                              transition: 'background-color 0.2s',
-                              '&:hover': {
-                                backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                              },
-                            }}
-                          >
-                            <ListItemText
-                              primary={transaction.description}
-                              secondary={formatCurrency(transaction.amount)}
-                              secondaryTypographyProps={{
-                                color: transaction.type === 'expense' ? 'error' : 'success.main',
-                              }}
-                            />
-                            <ListItemSecondaryAction>
-                              <Typography
-                                color={transaction.type === 'income' ? 'success.main' : 'error.main'}
-                                fontWeight="medium"
-                              >
-                                {formatCurrency(transaction.amount)}
-                              </Typography>
-                            </ListItemSecondaryAction>
-                          </ListItem>
-                        ))
-                    )}
-                  </List>
-                </Paper>
-              </Grid>
-            </Grid>
-          </Paper>
+                        {transaction.type === 'income' ? '+' : '-'}
+                        {formatCurrency(transaction.amount)}
+                      </Typography>
+                    </ListItem>
+                    {index < stats.transactions.recent.length - 1 && <Divider />}
+                  </React.Fragment>
+                ))}
+                {stats?.transactions?.recent.length === 0 && (
+                  <ListItem>
+                    <ListItemText
+                      primary="No recent transactions"
+                      secondary="Your recent transactions will appear here"
+                    />
+                  </ListItem>
+                )}
+              </List>
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
     </Container>
