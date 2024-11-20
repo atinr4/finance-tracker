@@ -3,14 +3,14 @@
   "buildCommand": "cd packages/web && npm install && npm run build",
   "outputDirectory": "packages/web/build",
   "functions": {
-    "packages/backend/api/*.ts": {
+    "api/*.ts": {
       "runtime": "@vercel/node@3.0.0"
     }
   },
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "/packages/backend/api/$1"
+      "dest": "/api"
     },
     {
       "src": "/static/(.*)",
@@ -25,7 +25,7 @@
       "dest": "/packages/web/build/favicon.ico"
     },
     {
-      "src": "/(.*)",
+      "src": "/((?!api/.*).*)",
       "dest": "/packages/web/build/index.html"
     }
   ]
